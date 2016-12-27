@@ -1,0 +1,64 @@
+version: '2'
+services:
+  elasticsearch:
+    image: elasticsearch:5
+    restart: "unless-stopped"
+    environment:
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    networks:
+      logs:
+        ipv4_address: 172.15.100.20
+
+# Logstash - log receiver
+  logstash:
+    image: logstash:5
+    restart: "unless-stopped"
+    command: -f /opt/logstash/logstash.conf
+    depends_on:
+      - elasticsearch
+    networks:
+      logs:
+        ipv4_address: 172.15.100.25
+    environment:
+      LOGSPOUT: ignore
+    volumes:
+      - ./docker/logstash/logstash.conf:/opt/logstash/logstash.conf:ro
+
+# Logspout - docker log collector
+  logspout:
+    image: skbkontur/logspout
+    build: ./docker/logspout
+    restart: "unless-stopped"
+    environment:
+      ROUTE_URIS: "logstash+tcp://logstash:5000"
+      DEBUG: "true"
+    depends_on:
+      - logstash
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      logs:
+        ipv4_address: 172.15.100.15
+
+# Kibana - log vizualizer
+  kibana:
+    image: kibana:5
+    restart: "unless-stopped"
+    depends_on:
+      - elasticsearch
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=300"
+    networks:
+      logs:
+        ipv4_address: 172.15.100.50
+
+networks:
+  logs:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+    ipam:
+      driver: default
+      config:
+      - subnet: 172.15.100.0/24
+        gateway: 172.15.100.1
